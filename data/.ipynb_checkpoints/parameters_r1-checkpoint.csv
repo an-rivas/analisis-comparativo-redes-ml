@@ -4,3 +4,4 @@ metric
 grow_policy
 learning_rate
 tree_method
+max_depth

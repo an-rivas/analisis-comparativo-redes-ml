@@ -1,7 +1,6 @@
 # Custom functions
 from funciones import CargarPandasDatasetCategoricos
 
-# Tratamiento de datos
 """
 Versiones
 numpy 1.23.3
@@ -10,48 +9,45 @@ xgboost 1.6.2
 sklearn 1.1.2
 Python 3.8.14
 """
+# Tratamiento de datos
 import numpy as np
 import pandas as pd
 import time
-from os.path import exists
 from sklearn.preprocessing import OrdinalEncoder
 
 # Preprocesado y modelado
-import multiprocessing
 from xgboost import XGBClassifier, XGBRegressor
 from sklearn.metrics import f1_score, mean_squared_error
 from sklearn.model_selection import GridSearchCV,ParameterGrid
-from sklearn.inspection import permutation_importance
 
 # Configuración warnings
 import warnings
 warnings.filterwarnings('ignore')
 warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
 
-def grid(param_grid, X, y, tipo='class', cv=5):
+XGBRegressor
+
+
+def BusquedaEnMalla(param_grid, X, y, tipo='class', cv=5):
     #hacer grid search
     if tipo=='regress':
         grid = GridSearchCV(XGBRegressor(), param_grid, cv=cv, scoring='neg_root_mean_squared_error', verbose=1, error_score="raise", n_jobs=-1)
-        #hacer fit
-        grid.fit(X, y)
-        #imprimir mejor score y mejores parametros
-        return grid.best_score_, grid.best_params_
-    
     else:
         if  tipo=='bin':
             scoring = 'f1'
         else:
             scoring = 'f1_micro'
         grid = GridSearchCV(XGBClassifier(), param_grid, cv=cv, scoring=scoring, verbose=1, error_score="raise", n_jobs=-1)
-        #hacer fit
-        grid.fit(X, y)
-        #devolver mejor score y mejores parametros
-        return grid.best_score_, grid.best_params_
+    
+    #hacer fit
+    grid.fit(X, y)
+    #devolver mejor score y mejores parametros
+    return grid.best_score_, grid.best_params_
 
 param_grid_r = ParameterGrid(
                             {
-                             'n_estimators'       : [[150]],
-                             'max_depth'          : [[10]],
+                             'n_estimators'       : [[50]],
+                             'max_depth'          : [range(5,10)],
                              'grow_policy'        : [['depthwise', 'lossguide']],
                              'learning_rate'      : [[0.1, 0.2, 0.3]],
                              'tree_method'        : [['approx', 'hist']],
@@ -60,30 +56,35 @@ param_grid_r = ParameterGrid(
                              'enable_categorical' : [[True]],
                              'eval_metric'        : [['rmse']],
                              'use_label_encoder'  : [[False]],
+                             'objective'          : [['reg:squarederror']],
                             }
                         )
 param_grid = ParameterGrid(
                             {
-                             'n_estimators'       : [[150]],
-                             'max_depth'          : [[10]],
+                             'n_estimators'       : [[50]],
+                             'max_depth'          : [range(5,10)],
                              'grow_policy'        : [['depthwise', 'lossguide']],
                              'learning_rate'      : [[0.1, 0.2, 0.3]],
-                             'tree_method'        : [['approx', 'hist']],
+                             'tree_method'        : [['approx']],
                              'random_state'       : [[5]],
                              'missing'            : [[np.nan]],
                              'enable_categorical' : [[True]],
-                             'eval_metric'        : [[f1_score]],
+                             'eval_metric'        : [[f1_score]], #'mlogloss'
                              'use_label_encoder'  : [[False]],
+                             'objective'          : [['reg:logistic']],
                             }
                         )
     
-path = 'data/'
+path = 'ENDIREH-data-analysis/Análisis de datos/Violencia_obstetrica_2021_backup/data/'
 
-columnas_regression = ['FOCOS', 'PAREJA_GANANCIAS', 'PAREJA_CUANTO_APORTA_GASTO']
-columnas_nan = ['RES_MADRE', 'RES_PADRE', 'VERIF_SITUACION_PAREJA', 'PAREJA_TRABAJA', 'PAREJA_GANANCIAS', 
-                'PAREJA_GANANCIAS_FRECUENCIA', 'PAREJA_APORTA_PARA_GASTO', 'PAREJA_CUANTO_APORTA_GASTO']
-columnasBin = ['ALFABETISMO', 'ASISTENCIA_ESC', 'LENG_INDIGENA', 'ENTREVISTADA_TRABAJA', 'PAREJA_TRABAJA', 'PAREJA_APORTA_PARA_GASTO', 
-               'LIBERTAD_USAR_DINERO', 'P10_8_abuso', 'P10_8_atencion']
+columnas_continuas = ['FOCOS', 'PAREJA_GANANCIAS', 'PAREJA_CUANTO_APORTA_GASTO']
+columnas_dfaltantes = ['RES_MADRE', 'RES_PADRE', 'VERIF_SITUACION_PAREJA', 
+                'PAREJA_TRABAJA', 'PAREJA_GANANCIAS',
+                'PAREJA_GANANCIAS_FRECUENCIA', 'PAREJA_APORTA_PARA_GASTO',
+                'PAREJA_CUANTO_APORTA_GASTO']
+columnas_binarias = ['ALFABETISMO', 'ASISTENCIA_ESC', 'LENG_INDIGENA', 
+               'ENTREVISTADA_TRABAJA', 'LIBERTAD_USAR_DINERO', 
+               'P10_8_abuso', 'P10_8_atencion']
 #columnas_mult_class = ['BIENES_DE_VIVIENDA', 'FUENTES_DE_DINERO', 'PROPIEDADES_DEL_HOGAR', 'SERVICIOS_MEDICOS_AFILIADA', 'DONDE_CONSULTAS_PRENATALES']
 
 nombre = 'endireh_nac.csv'
@@ -91,9 +92,9 @@ nombre = 'endireh_nac.csv'
 endireh = CargarPandasDatasetCategoricos(path+nombre)
 
 #Se ignoran basado en no chingar los datos como ya estan establecidos
-columnas_ignorar = ['CUARTOS_DORMIR', 'PAREJA_CUANTO_APORTA_GASTO', 'NUM_EMBARAZOS', 'NACIO_VIV', 'ABORTO']
+columnas_ignorar = ['CUARTOS_DORMIR', 'NUM_EMBARAZOS', 'NACIO_VIV', 'ABORTO']
 
-parametros = ['tiempo', 'metric', 'grow_policy', 'learning_rate', 'tree_method']
+parametros = ['tiempo', 'metric', 'grow_policy', 'learning_rate', 'tree_method', 'max_depth']
 archivo_param = 'parameters_r1.csv'
 param = pd.read_csv(path+archivo_param, index_col='Unnamed: 0')
 aux = {p:[] for p in parametros}
@@ -104,32 +105,29 @@ for i,col in enumerate(endireh.columns): #POR CADA COLUMNA EN EL DATASET
     
     if col not in param.columns and col not in columnas_ignorar:
         #### SEPARAR EN X y
-        if col in columnas_nan: # SI ES DE LAS COLUMNAS CON VALORES NULOS
-            # obtener los registros no nulos
-            selected_rows = endireh[~endireh[col].isnull()]
-        else:
-            selected_rows = endireh
+        # SI ES DE LAS COLUMNAS CON VALORES NULOS, obtener los registros no nulos
+        filas_seleccionadas = endireh[~endireh[col].isnull()] if col in columnas_dfaltantes else endireh
         # declarar la variable objetivo actual y sacarla de la matriz
-        y = selected_rows[col].copy()
-        X = selected_rows.drop(columns=col, inplace=False)
-        
-        #### ASEGURAR QUE <<y>> TENGA VALORES CONTINUOS
-        unicos = sorted(y.unique()) # si es multiclass esta linea da problemas
-        if unicos[-1] >= len(unicos): # SI FALTA ALGUN VALOR EN LA VARIABLE ACTUAL
-            y = OrdinalEncoder().fit_transform(y.to_frame()).squeeze()
-        
+        y = filas_seleccionadas[col].copy()
+        X = filas_seleccionadas.drop(columns=col, inplace=False)
+
         print(X.shape, y.shape)
         tiempo = time.time()
         # hacer la búsqueda grid y obtener el feature importance
-        if col in columnas_regression:
+        if col in columnas_continuas:
             #regression
-            f1, dicc = grid(param_grid_r, X, y.astype('int64'), tipo='regress')
-        elif col in columnasBin:
+            f1, dicc = BusquedaEnMalla(param_grid_r, X, y.astype('int64'), tipo='regress')
+        elif col in columnas_binarias:
             #clasificacion binaria
-            f1, dicc = grid(param_grid, X, y.astype('bool'), tipo='bin')
+            f1, dicc = BusquedaEnMalla(param_grid, X, y.astype('bool'), tipo='bin')
         else:
             #clasificacion de multiples valores en una sola etiqueta
-            f1, dicc = grid(param_grid, X, y, tipo='class')
+            #### ASEGURAR QUE <<y>> TENGA VALORES CONTINUOS
+            unicos = sorted(y.unique()) # si es multiclass esta linea da problemas
+            if unicos[-1] >= len(unicos): # SI FALTA ALGUN VALOR EN LA VARIABLE ACTUAL
+                y = pd.Series(OrdinalEncoder().fit_transform(y.to_frame()).squeeze())
+            #clasificacion de multiples valores en una sola etiqueta
+            f1, dicc = BusquedaEnMalla(param_grid, X, y.astype('category'), tipo='class')
 
         aux['metric'] = f1
         aux['tiempo'] = time.time() - tiempo

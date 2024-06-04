@@ -1,7 +1,6 @@
 # Custom functions
 from funciones import CargarPandasDatasetCategoricos
 
-# Tratamiento de datos
 """
 Versiones
 numpy 1.23.3
@@ -10,6 +9,7 @@ xgboost 1.6.2
 sklearn 1.1.2
 Python 3.8.14
 """
+# Tratamiento de datos
 import numpy as np
 import pandas as pd
 import time
@@ -17,21 +17,18 @@ from os.path import exists
 from sklearn.preprocessing import OrdinalEncoder
 
 # Preprocesado y modelado
-import multiprocessing
-from xgboost import XGBClassifier, XGBRegressor, DMatrix
+from xgboost import XGBClassifier, XGBRegressor
 from sklearn.metrics import f1_score, mean_squared_error
-from sklearn.model_selection import GridSearchCV,ParameterGrid
 from sklearn.inspection import permutation_importance
 
 # Configuración warnings
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 
-def grid(param_grid, X, y, tipo='class', cv=5):
-    #hacer grid search
+def ImportanciaDeVariables(param_grid, X, y, tipo='class'):
     if tipo=='regress':
         param_grid['learning_rate'] = 0.3
-        param_grid['tree_method'] = 'approx'
+        param_grid['max_depth'] = 5
         param_grid['eval_metric'] = 'rmse'
         param_grid['objective'] = 'reg:squarederror'
         model = XGBRegressor(**param_grid)
@@ -39,16 +36,17 @@ def grid(param_grid, X, y, tipo='class', cv=5):
         model.fit(X,y)
         #imprimir mejor score
         print(f'rmse: {mean_squared_error(model.predict(X), y, squared=False)}')
-        return permutation_importance(model, X, y, random_state=5, n_jobs = -1).importances_mean
     else:
         if tipo=='bin':
-            param_grid['learning_rate'] = 0.3
-            param_grid['tree_method'] = 'approx'
-            param_grid['objective'] = 'binary:logistic'
-        else:
             param_grid['learning_rate'] = 0.1
-            param_grid['tree_method'] = 'hist'
-            param_grid['objective'] = 'multi:softmax'
+            param_grid['max_depth'] = 9
+            param_grid['objective'] = 'binary:logistic'
+            #param_grid['eval_metric'] = 'logloss'
+        else:
+            param_grid['learning_rate'] = 0.3
+            param_grid['max_depth'] = 8
+            param_grid['objective'] = 'reg:logistic'
+            #param_grid['eval_metric'] = 'mlogloss'
         param_grid['eval_metric'] = f1_score
         model = XGBClassifier(**param_grid)
         #hacer fit
@@ -58,27 +56,34 @@ def grid(param_grid, X, y, tipo='class', cv=5):
             print(f'f1: {f1_score(model.predict(X), y, average="binary")}')
         else:
             print(f'f1: {f1_score(model.predict(X), y, average="macro")}') 
-        return permutation_importance(model, X, y, random_state=5, n_jobs = -1).importances_mean
+    
+    return permutation_importance(model, X, y, random_state=5, n_jobs = -1).importances_mean
 
-param_grid = {'n_estimators'       : 150,
-              'max_depth'          : 10,
-              'grow_policy'        : 'depthwise',
-              'learning_rate'      : 0.1,
-              'tree_method'        : 'approx',
-              'n_jobs'             : -1,
+param_grid = {# estos son pre-elegidos
+              'n_estimators'       : 50,
               'random_state'       : 5,
               'missing'            : np.nan,
               'enable_categorical' : True,
-              'eval_metric'        : f1_score,
               'use_label_encoder'  : False,
+              
+              # estos cambian dependiendo del problema
+              'eval_metric'        : f1_score,  
+              'learning_rate'      : 0.3,
+              'max_depth'          : 5,
+              
+              # estos son obtenidos en búsqueda en malla estáticos a todos los problemas
+              'grow_policy'        : 'depthwise',
+              'tree_method'        : 'approx',
+              
+              'n_jobs'             : -1,
              }
 
-path = 'data/'
+path = 'ENDIREH-data-analysis/Análisis de datos/Violencia_obstetrica_2021_backup/data/'
 
-columnas_regression = ['FOCOS', 'PAREJA_GANANCIAS', 'PAREJA_CUANTO_APORTA_GASTO']
-columnas_nan = ['RES_MADRE', 'RES_PADRE', 'VERIF_SITUACION_PAREJA', 'PAREJA_TRABAJA', 'PAREJA_GANANCIAS', 
+columnas_continuas = ['FOCOS', 'PAREJA_GANANCIAS', 'PAREJA_CUANTO_APORTA_GASTO']
+columnas_dfaltantes = ['RES_MADRE', 'RES_PADRE', 'VERIF_SITUACION_PAREJA', 'PAREJA_TRABAJA', 'PAREJA_GANANCIAS', 
                 'PAREJA_GANANCIAS_FRECUENCIA', 'PAREJA_APORTA_PARA_GASTO', 'PAREJA_CUANTO_APORTA_GASTO']
-columnasBin = ['ALFABETISMO', 'ASISTENCIA_ESC', 'LENG_INDIGENA', 'ENTREVISTADA_TRABAJA', 'PAREJA_TRABAJA', 'PAREJA_APORTA_PARA_GASTO', 
+columnas_binarias = ['ALFABETISMO', 'ASISTENCIA_ESC', 'LENG_INDIGENA', 'ENTREVISTADA_TRABAJA',
                'LIBERTAD_USAR_DINERO', 'P10_8_abuso', 'P10_8_atencion']
 #columnas_mult_class = ['BIENES_DE_VIVIENDA', 'FUENTES_DE_DINERO', 'PROPIEDADES_DEL_HOGAR', 'SERVICIOS_MEDICOS_AFILIADA', 'DONDE_CONSULTAS_PRENATALES']
 
@@ -107,29 +112,27 @@ for nombre in datasets: #POR CADA UNO DE LOS DATASETS
             print(col, i) #print de control para saber que está trabajando
             
             #### SEPARAR EN X y
-            if col in columnas_nan: # SI ES DE LAS COLUMNAS CON VALORES NULOS
-                # obtener los registros no nulos
-                selected_rows = endireh[~endireh[col].isnull()]
-            else:
-                selected_rows = endireh
-            y = selected_rows[col].copy()
-            X = selected_rows.drop(columns=col, inplace=False)
-        
-            #### ASEGURAR QUE <<y>> TENGA VALORES CONTINUOS
-            unicos = sorted(y.unique()) # si es multiclass esta linea da problemas
-            if unicos[-1] >= len(unicos): # SI FALTA ALGUN VALOR EN EL DOMINIO ACTUAL
-                y = OrdinalEncoder().fit_transform(y.to_frame()).squeeze()
+            # SI ES DE LAS COLUMNAS CON VALORES NULOS, obtener los registros no nulos
+            filas_seleccionadas = endireh[~endireh[col].isnull()] if col in columnas_dfaltantes else endireh
+            # declarar la variable objetivo actual y sacarla de la matriz
+            y = filas_seleccionadas[col].copy()
+            X = filas_seleccionadas.drop(columns=col, inplace=False)
         
             # hacer la gradient bossting machine y obtener el feature importance
-            if col in columnas_regression:
+            if col in columnas_continuas:
                 #regression
-                fi = grid(param_grid, X, y.astype('int64'), tipo='regress')
-            elif col in columnasBin:
+                fi = ImportanciaDeVariables(param_grid, X, y.astype('int64'), tipo='regress')
+            elif col in columnas_binarias:
                 #clasificacion binaria
-                fi = grid(param_grid, X, y.astype('bool'), tipo='bin')
+                fi = ImportanciaDeVariables(param_grid, X, y.astype('bool'), tipo='bin')
             else:
                 #clasificacion de multiples valores en una sola etiqueta
-                fi = grid(param_grid, X, y, tipo='class')
+                #### ASEGURAR QUE <<y>> TENGA VALORES CONTINUOS
+                unicos = sorted(y.unique()) # si es multiclass esta linea da problemas
+                if unicos[-1] >= len(unicos): # SI FALTA ALGUN VALOR EN LA VARIABLE ACTUAL
+                    y = pd.Series(OrdinalEncoder().fit_transform(y.to_frame()).squeeze())
+                #clasificacion de multiples valores en una sola etiqueta
+                fi = ImportanciaDeVariables(param_grid, X, y.astype('category'), tipo='class')
 
             # insertar el valor nan a la columna actual
             fi = np.insert(fi, i, np.nan)
