@@ -1,14 +1,6 @@
 # Custom functions
 from funciones import CargarPandasDatasetCategoricos
 
-"""
-Versiones
-numpy 1.23.3
-pandas 1.5.0
-xgboost 1.6.2
-sklearn 1.1.2
-Python 3.8.14
-"""
 # Tratamiento de datos
 import numpy as np
 import pandas as pd
@@ -27,7 +19,7 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 
 def ImportanciaDeVariables(param_grid, X, y, tipo='class'):
     if tipo=='regress':
-        param_grid['learning_rate'] = 0.3
+        param_grid['learning_rate'] = 0.1
         param_grid['max_depth'] = 5
         param_grid['eval_metric'] = 'rmse'
         param_grid['objective'] = 'reg:squarederror'
@@ -37,17 +29,14 @@ def ImportanciaDeVariables(param_grid, X, y, tipo='class'):
         #imprimir mejor score
         print(f'rmse: {mean_squared_error(model.predict(X), y, squared=False)}')
     else:
+        param_grid['learning_rate'] = 0.3
+        param_grid['max_depth'] = 8
         if tipo=='bin':
-            param_grid['learning_rate'] = 0.1
-            param_grid['max_depth'] = 9
             param_grid['objective'] = 'binary:logistic'
-            #param_grid['eval_metric'] = 'logloss'
+            param_grid['eval_metric'] = 'logloss'
         else:
-            param_grid['learning_rate'] = 0.3
-            param_grid['max_depth'] = 8
             param_grid['objective'] = 'reg:logistic'
-            #param_grid['eval_metric'] = 'mlogloss'
-        param_grid['eval_metric'] = f1_score
+            param_grid['eval_metric'] = 'mlogloss'
         model = XGBClassifier(**param_grid)
         #hacer fit
         model.fit(X,y)
@@ -65,6 +54,7 @@ param_grid = {# estos son pre-elegidos
               'missing'            : np.nan,
               'enable_categorical' : True,
               'use_label_encoder'  : False,
+              'n_jobs'             : -1,
               
               # estos cambian dependiendo del problema
               'eval_metric'        : f1_score,  
@@ -74,18 +64,15 @@ param_grid = {# estos son pre-elegidos
               # estos son obtenidos en búsqueda en malla estáticos a todos los problemas
               'grow_policy'        : 'depthwise',
               'tree_method'        : 'approx',
-              
-              'n_jobs'             : -1,
              }
 
-path = 'ENDIREH-data-analysis/Análisis de datos/Violencia_obstetrica_2021_backup/data/'
+path = 'ENDIREH-data-analysis/Análisis de datos/Violencia_obstetrica_2024v/data/'
 
 columnas_continuas = ['FOCOS', 'PAREJA_GANANCIAS', 'PAREJA_CUANTO_APORTA_GASTO']
 columnas_dfaltantes = ['RES_MADRE', 'RES_PADRE', 'VERIF_SITUACION_PAREJA', 'PAREJA_TRABAJA', 'PAREJA_GANANCIAS', 
                 'PAREJA_GANANCIAS_FRECUENCIA', 'PAREJA_APORTA_PARA_GASTO', 'PAREJA_CUANTO_APORTA_GASTO']
 columnas_binarias = ['ALFABETISMO', 'ASISTENCIA_ESC', 'LENG_INDIGENA', 'ENTREVISTADA_TRABAJA',
                'LIBERTAD_USAR_DINERO', 'P10_8_abuso', 'P10_8_atencion']
-#columnas_mult_class = ['BIENES_DE_VIVIENDA', 'FUENTES_DE_DINERO', 'PROPIEDADES_DEL_HOGAR', 'SERVICIOS_MEDICOS_AFILIADA', 'DONDE_CONSULTAS_PRENATALES']
 
 datasets = ['endireh_nac.csv', 'endireh_dom_0.csv', 'endireh_dom_1.csv', 'endireh_dom_2.csv']
 
@@ -93,7 +80,6 @@ print("Tiempo de inicio:", time.strftime("%H:%M:%S", time.localtime()), '\n')
 
 for nombre in datasets: #POR CADA UNO DE LOS DATASETS
     print(f'por cada dataset {nombre}')
-    #print(nombre)
     endireh = CargarPandasDatasetCategoricos(path+nombre)
     
     archivo_PFI = 'pesos_'+'_'.join(nombre.split('_')[1:])
@@ -111,7 +97,7 @@ for nombre in datasets: #POR CADA UNO DE LOS DATASETS
         if col not in PFI.columns: # SI LA COLUMNA TODAVÍA NO EXISTE EN EL CSV DE PESOS PFI
             print(col, i) #print de control para saber que está trabajando
             
-            #### SEPARAR EN X y
+            #### SEPARAR EN X,y
             # SI ES DE LAS COLUMNAS CON VALORES NULOS, obtener los registros no nulos
             filas_seleccionadas = endireh[~endireh[col].isnull()] if col in columnas_dfaltantes else endireh
             # declarar la variable objetivo actual y sacarla de la matriz
@@ -130,9 +116,12 @@ for nombre in datasets: #POR CADA UNO DE LOS DATASETS
                 #### ASEGURAR QUE <<y>> TENGA VALORES CONTINUOS
                 unicos = sorted(y.unique()) # si es multiclass esta linea da problemas
                 if unicos[-1] >= len(unicos): # SI FALTA ALGUN VALOR EN LA VARIABLE ACTUAL
-                    y = pd.Series(OrdinalEncoder().fit_transform(y.to_frame()).squeeze())
-                #clasificacion de multiples valores en una sola etiqueta
-                fi = ImportanciaDeVariables(param_grid, X, y.astype('category'), tipo='class')
+                    mapeo = {valor: i for i,valor in enumerate(unicos)} # mapeo de los valores unicos a una secuencia continua
+                    y = y.map(mapeo)
+                # hacer que sea ordenada
+                y = pd.Categorical(y, categories=range(len(unicos)), ordered=True)
+                # clasificacion de multiples valores en una sola etiqueta
+                f1, dicc = BusquedaEnMalla(param_grid, X, y, tipo='class')
 
             # insertar el valor nan a la columna actual
             fi = np.insert(fi, i, np.nan)

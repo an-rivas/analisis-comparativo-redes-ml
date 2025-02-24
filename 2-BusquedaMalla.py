@@ -1,14 +1,6 @@
 # Custom functions
 from funciones import CargarPandasDatasetCategoricos
 
-"""
-Versiones
-numpy 1.23.3
-pandas 1.5.0
-xgboost 1.6.2
-sklearn 1.1.2
-Python 3.8.14
-"""
 # Tratamiento de datos
 import numpy as np
 import pandas as pd
@@ -69,13 +61,13 @@ param_grid = ParameterGrid(
                              'random_state'       : [[5]],
                              'missing'            : [[np.nan]],
                              'enable_categorical' : [[True]],
-                             'eval_metric'        : [[f1_score]], #'mlogloss'
+                             'eval_metric'        : [['mlogloss']], 
                              'use_label_encoder'  : [[False]],
                              'objective'          : [['reg:logistic']],
                             }
                         )
     
-path = 'ENDIREH-data-analysis/Análisis de datos/Violencia_obstetrica_2021_backup/data/'
+path = 'ENDIREH-data-analysis/Análisis de datos/Violencia_obstetrica_2024v/data/'
 
 columnas_continuas = ['FOCOS', 'PAREJA_GANANCIAS', 'PAREJA_CUANTO_APORTA_GASTO']
 columnas_dfaltantes = ['RES_MADRE', 'RES_PADRE', 'VERIF_SITUACION_PAREJA', 
@@ -85,13 +77,12 @@ columnas_dfaltantes = ['RES_MADRE', 'RES_PADRE', 'VERIF_SITUACION_PAREJA',
 columnas_binarias = ['ALFABETISMO', 'ASISTENCIA_ESC', 'LENG_INDIGENA', 
                'ENTREVISTADA_TRABAJA', 'LIBERTAD_USAR_DINERO', 
                'P10_8_abuso', 'P10_8_atencion']
-#columnas_mult_class = ['BIENES_DE_VIVIENDA', 'FUENTES_DE_DINERO', 'PROPIEDADES_DEL_HOGAR', 'SERVICIOS_MEDICOS_AFILIADA', 'DONDE_CONSULTAS_PRENATALES']
 
 nombre = 'endireh_nac.csv'
 
 endireh = CargarPandasDatasetCategoricos(path+nombre)
 
-#Se ignoran basado en no chingar los datos como ya estan establecidos
+#Se ignoran basado en no importunar los datos como ya estan establecidos
 columnas_ignorar = ['CUARTOS_DORMIR', 'NUM_EMBARAZOS', 'NACIO_VIV', 'ABORTO']
 
 parametros = ['tiempo', 'metric', 'grow_policy', 'learning_rate', 'tree_method', 'max_depth']
@@ -104,8 +95,8 @@ for i,col in enumerate(endireh.columns): #POR CADA COLUMNA EN EL DATASET
     print(col, i) #print de control para saber que está trabajando
     
     if col not in param.columns and col not in columnas_ignorar:
-        #### SEPARAR EN X y
-        # SI ES DE LAS COLUMNAS CON VALORES NULOS, obtener los registros no nulos
+        #### SEPARAR EN X,y
+        # SI y ES DE LAS COLUMNAS CON VALORES NULOS, obtener los registros no nulos
         filas_seleccionadas = endireh[~endireh[col].isnull()] if col in columnas_dfaltantes else endireh
         # declarar la variable objetivo actual y sacarla de la matriz
         y = filas_seleccionadas[col].copy()
@@ -125,9 +116,12 @@ for i,col in enumerate(endireh.columns): #POR CADA COLUMNA EN EL DATASET
             #### ASEGURAR QUE <<y>> TENGA VALORES CONTINUOS
             unicos = sorted(y.unique()) # si es multiclass esta linea da problemas
             if unicos[-1] >= len(unicos): # SI FALTA ALGUN VALOR EN LA VARIABLE ACTUAL
-                y = pd.Series(OrdinalEncoder().fit_transform(y.to_frame()).squeeze())
-            #clasificacion de multiples valores en una sola etiqueta
-            f1, dicc = BusquedaEnMalla(param_grid, X, y.astype('category'), tipo='class')
+                mapeo = {valor: i for i, valor in enumerate(unicos)} # mapeo de los valores unicos a una secuencia continua
+                y = y.map(mapeo)
+            # hacer que sea ordenada
+            y = pd.Categorical(y, categories=range(len(unicos)), ordered=True)
+            # clasificacion de multiples valores en una sola etiqueta
+            f1, dicc = BusquedaEnMalla(param_grid, X, y, tipo='class')
 
         aux['metric'] = f1
         aux['tiempo'] = time.time() - tiempo
@@ -142,11 +136,3 @@ for i,col in enumerate(endireh.columns): #POR CADA COLUMNA EN EL DATASET
         param.to_csv(path+archivo_param, index=True)
 
     print("Tiempo actual:", time.strftime("%H:%M:%S", time.localtime()), '\n')
-
-"""
-##obtener un solo valor para las columnas de multiple clasificacion
-for col in columnas_mult_class:
-aux = PFI.loc[desgloce_columnas_mult_class[col],:].median()
-PFI.append(pd.Series(data=aux, name='_'.join(col.split('_')[:2])), ignore_index=False)
-PFI.drop(index=desgloce_columnas_mult_class[col], inplace=False)
-"""

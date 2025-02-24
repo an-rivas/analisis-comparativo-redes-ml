@@ -90,5 +90,5 @@ def InsertarColumnaNueva(df, nombreCol, numeroCol, funcion):
         pandas dataset
     """
     df_copy = copy.copy(df)
-    df_copy.insert(numeroCol, nombreCol, df.apply(funcion, axis=1))
+    df_copy.insert(numeroCol, nombreCol, df_copy.apply(funcion, axis=1))
     return df_copy
